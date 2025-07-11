@@ -4,6 +4,9 @@
 
 Wrapped ACG (wACG) is an ERC-20 token that represents ACG tokens on the Binance Smart Chain (BSC). It enables cross-chain functionality between the ACG blockchain and BSC, allowing users to bridge their ACG tokens between networks.
 
+## AUDIT REPORT
+https://github.com/ariworks-online/wACG/blob/main/AUDIT-REPORT.md
+
 ## Contract Information
 
 - **Contract Name**: WrappedACG
