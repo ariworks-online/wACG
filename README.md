@@ -286,9 +286,9 @@ OWNER_ADDRESS=your_owner_address
 ## Support
 
 ### Contact Information
-- **Security**: security@aurumcryptogold.com
-- **Technical Support**: support@aurumcryptogold.com
-- **Documentation**: https://docs.aurumcryptogold.com
+- **Security**: dev@aurumcryptogold.com
+- **Technical Support**: dev@aurumcryptogold.com
+- **Developer**: hi@ariworks.online
 
 ### Emergency Procedures
 1. Pause contract if suspicious activity detected
