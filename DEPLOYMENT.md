@@ -29,8 +29,8 @@ This guide provides step-by-step instructions for deploying the Wrapped ACG (wAC
 
 ```bash
 # Clone the repository
-git clone https://github.com/aurumcryptogold/wrapped-acg-contracts.git
-cd wrapped-acg-contracts
+git clone https://github.com/ariworks-online/wACG.git
+cd wACG
 
 # Install dependencies
 npm install
@@ -322,4 +322,4 @@ For additional support, contact the development team at support@aurumcryptogold.
 ---
 
 **Last Updated**: December 2024
-**Version**: 1.0.0 
+**Version**: 1.0.1
