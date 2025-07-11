@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
+// Counters import removed
 
 /**
  * @title WrappedACG
@@ -26,7 +26,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
  */
 contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    using Counters for Counters.Counter;
+    // Counters.Counter private _requestIdCounter; // removed
 
     // ============ STATE VARIABLES ============
     
@@ -51,8 +51,7 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
     /// @notice Mapping to prevent duplicate wrap/unwrap requests
     mapping(bytes32 => bool) public processedRequests;
     
-    /// @notice Counter for request IDs
-    Counters.Counter private _requestIdCounter;
+    // Counters.Counter private _requestIdCounter; // removed
     
     /// @notice Mapping to track daily wrap limits per address
     mapping(address => mapping(uint256 => uint256)) public dailyWrapAmounts;
@@ -67,16 +66,20 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
     uint256 public dailyUnwrapLimit;
     
     /// @notice Contract version
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "1.0.1";
+
+    /// @notice Emergency mint lock
+    bool public mintLocked = false;
 
     // ============ EVENTS ============
     
     event CustodianChanged(address indexed oldCustodian, address indexed newCustodian);
-    event ACGWrapped(address indexed to, uint256 amount, string acgTxHash, bytes32 indexed requestId);
-    event ACGUnwrapped(address indexed from, uint256 amount, string acgAddress, bytes32 indexed requestId);
+    event ACGWrapped(address indexed to, uint256 amount, string acgTxHash, bytes32 indexed requestId, uint256 timestamp);
+    event ACGUnwrapped(address indexed from, uint256 amount, string acgAddress, bytes32 indexed requestId, uint256 timestamp);
     event EmergencyRecovery(address indexed token, address indexed to, uint256 amount);
     event LimitsUpdated(uint256 maxWrapAmount, uint256 maxUnwrapAmount, uint256 minAmount);
     event DailyLimitsUpdated(uint256 dailyWrapLimit, uint256 dailyUnwrapLimit);
+    event EmergencyMintingDisabled();
 
     // ============ ERRORS ============
     
@@ -114,6 +117,14 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
      */
     modifier validAmount(uint256 amount) {
         if (amount == 0) revert InvalidAmount();
+        _;
+    }
+
+    /**
+     * @dev Modifier to restrict emergency minting if locked
+     */
+    modifier mintNotLocked() {
+        require(!mintLocked, "Emergency minting disabled");
         _;
     }
 
@@ -185,8 +196,8 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
         
         // Check daily limits
         uint256 today = block.timestamp / 1 days;
-        uint256 dailyAmount = dailyWrapAmounts[to][today] + amount;
-        if (dailyAmount > dailyWrapLimit) revert DailyLimitExceeded();
+        uint256 newDailyAmount = dailyWrapAmounts[to][today] + amount;
+        if (newDailyAmount > dailyWrapLimit) revert DailyLimitExceeded();
         
         // Create unique request ID to prevent duplicates
         bytes32 requestId = keccak256(abi.encodePacked(to, amount, acgTxHash, block.chainid));
@@ -195,12 +206,12 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
         // Update state
         processedRequests[requestId] = true;
         totalACGWrapped += amount;
-        dailyWrapAmounts[to][today] = dailyAmount;
+        dailyWrapAmounts[to][today] = newDailyAmount;
         
         // Mint wACG tokens
         _mint(to, amount);
         
-        emit ACGWrapped(to, amount, acgTxHash, requestId);
+        emit ACGWrapped(to, amount, acgTxHash, requestId, block.timestamp);
     }
 
     /**
@@ -236,8 +247,8 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
         
         // Check daily limits
         uint256 today = block.timestamp / 1 days;
-        uint256 dailyAmount = dailyUnwrapAmounts[from][today] + amount;
-        if (dailyAmount > dailyUnwrapLimit) revert DailyLimitExceeded();
+        uint256 newDailyAmount = dailyUnwrapAmounts[from][today] + amount;
+        if (newDailyAmount > dailyUnwrapLimit) revert DailyLimitExceeded();
         
         // Create unique request ID to prevent duplicates
         bytes32 requestId = keccak256(abi.encodePacked(from, amount, acgAddress, block.chainid));
@@ -246,12 +257,12 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
         // Update state
         processedRequests[requestId] = true;
         totalACGUnwrapped += amount;
-        dailyUnwrapAmounts[from][today] = dailyAmount;
+        dailyUnwrapAmounts[from][today] = newDailyAmount;
         
         // Burn wACG tokens
         _burn(from, amount);
         
-        emit ACGUnwrapped(from, amount, acgAddress, requestId);
+        emit ACGUnwrapped(from, amount, acgAddress, requestId, block.timestamp);
     }
 
     // ============ ADMIN FUNCTIONS ============
@@ -270,8 +281,17 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
         whenNotPaused 
         validAddress(to)
         validAmount(amount)
+        mintNotLocked
     {
         _mint(to, amount);
+    }
+
+    /**
+     * @dev Disable emergency minting forever (owner only)
+     */
+    function disableEmergencyMinting() external onlyOwner {
+        mintLocked = true;
+        emit EmergencyMintingDisabled();
     }
 
     /**
