@@ -288,6 +288,9 @@ contract WrappedACG is ERC20, Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Disable emergency minting forever (owner only)
+     * @notice This function is IRREVERSIBLE - once called, emergency minting cannot be re-enabled
+     * @notice This is a permanent safety measure to prevent any future minting backdoors
+     * @notice Use with extreme caution as this action cannot be undone
      */
     function disableEmergencyMinting() external onlyOwner {
         mintLocked = true;
