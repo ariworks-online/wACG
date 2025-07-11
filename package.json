@@ -1,0 +1,58 @@
+{
+  "name": "wrapped-acg-contracts",
+  "version": "1.0.0",
+  "description": "Wrapped ACG (wACG) smart contracts for cross-chain bridge functionality",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:coverage": "hardhat coverage",
+    "test:gas": "REPORT_GAS=true hardhat test",
+    "deploy:testnet": "hardhat run deploy-testnet.js --network bscTestnet",
+    "deploy:mainnet": "hardhat run deploy-mainnet.js --network bsc",
+    "verify:mainnet": "hardhat verify --network bsc",
+    "lint": "solhint 'contracts/**/*.sol'",
+    "lint:fix": "solhint 'contracts/**/*.sol' --fix",
+    "size": "hardhat size-contracts",
+    "clean": "hardhat clean",
+    "node": "hardhat node",
+    "console": "hardhat console",
+    "flatten": "hardhat flatten contracts/WrappedACG.sol > WrappedACG-flattened.sol"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "smart-contracts",
+    "defi",
+    "bridge",
+    "cross-chain",
+    "binance-smart-chain",
+    "wrapped-tokens"
+  ],
+  "author": "Aurum Crypto Gold Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "@openzeppelin/hardhat-upgrades": "^1.28.0",
+    "hardhat": "^2.19.0",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solidity-coverage": "^0.8.5",
+    "solhint": "^4.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aurumcryptogold/wrapped-acg-contracts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aurumcryptogold/wrapped-acg-contracts/issues"
+  },
+  "homepage": "https://github.com/aurumcryptogold/wrapped-acg-contracts#readme"
+} 
