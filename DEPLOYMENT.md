@@ -3,6 +3,8 @@
 ## Overview
 This guide provides step-by-step instructions for deploying the Wrapped ACG (wACG) smart contract to Binance Smart Chain (BSC) mainnet.
 
+**Note**: This repository contains only the smart contract code for public review and auditing. For actual deployment scripts and configuration files, use your private deployment folder.
+
 ## Prerequisites
 
 ### Required Software
@@ -35,14 +37,19 @@ cd wACG
 # Install dependencies
 npm install
 
-# Create environment file
-cp .env.example .env
+# Note: This repository contains only the smart contract code.
+# For deployment scripts and configuration, use your private deployment folder.
 ```
 
 ### 2. Environment Configuration
 
-Edit the `.env` file with your configuration:
+**Note**: This repository contains only the smart contract code. For deployment configuration:
 
+1. Use your private deployment folder with deployment scripts
+2. Set up environment variables in your deployment environment
+3. Configure private keys and API keys securely
+
+Required environment variables for deployment:
 ```bash
 # Deployment Configuration
 PRIVATE_KEY=your_deployment_wallet_private_key
@@ -120,7 +127,7 @@ const config = {
 ### Step 1: Compile Contracts
 ```bash
 # Compile all contracts
-npm run compile
+npx hardhat compile
 
 # Verify compilation success
 ls artifacts/contracts/
@@ -129,19 +136,20 @@ ls artifacts/contracts/
 ### Step 2: Run Tests
 ```bash
 # Run all tests
-npm test
+npx hardhat test
 
 # Run with gas reporting
-npm run test:gas
+npx hardhat test --gas
 
 # Run coverage
-npm run test:coverage
+npx hardhat coverage
 ```
 
 ### Step 3: Deploy to Mainnet
 ```bash
-# Deploy to BSC mainnet
-npm run deploy:mainnet
+# Deploy to BSC mainnet using your private deployment folder
+# This repository contains only the smart contract code
+# Use your deployment scripts from your private folder
 ```
 
 ### Step 4: Verify Deployment
