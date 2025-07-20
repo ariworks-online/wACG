@@ -15,6 +15,43 @@ Wrapped ACG (wACG) is an ERC-20 token that represents ACG tokens on the Binance 
 **Auditor**: AI Auditor (OpenAI)  
 **Key Findings**: All critical issues resolved, production-ready with enterprise-grade security
 
+## 🚀 Deployment Status
+
+**Status**: ✅ **PRODUCTION DEPLOYED**  
+**Deployment Date**: July 20, 2025  
+**Network**: BSC Mainnet  
+**Contract Version**: 1.2.0 (Secure)  
+**Bridge Status**: ✅ **ACTIVE** - Processing wrap/unwrap requests  
+**Frontend**: ✅ **LIVE** - https://bridge.aurumcrypto.gold  
+**Fee Update**: ✅ **COMPLETED** - Contract fees disabled, bridge service handles all fees
+
+### Current Configuration
+- **Bridge Operator**: `0xE70D19b3B88cB79E62962D86d284af6f6269864C`
+- **Owner**: `0xE70D19b3B88cB79E62962D86d284af6f6269864C`
+- **Emergency Recovery**: `0x65d3083F153372940149b41E820457253d14Ab0E` (Multi-sig)
+- **Upgrade Controller**: `0x65d3083F153372940149b41E820457253d14Ab0E` (Multi-sig)
+- **Fee Collector**: `0xE70D19b3B88cB79E62962D86d284af6f6269864C`
+- **Unwrap Fee**: 0% (0 basis points) - No contract fees
+- **Bridge Service Fee**: 1 ACG per unwrap
+- **Gas Fee**: 0.0014 BNB per wrap/unwrap operation
+- **Max Supply**: 51,940,422 wACG
+- **Daily Limits**: 100,000 wACG per address
+
+## Fee Structure
+
+### Current Fee Configuration
+- **Contract Fee**: 0% (0 basis points) - No fees taken by smart contract
+- **Bridge Service Fee**: 1 ACG per unwrap operation
+- **Gas Fee**: 0.0014 BNB per wrap/unwrap operation (covers BSC transaction costs)
+- **Total Cost for Unwrap**: 1 ACG + 0.0014 BNB
+
+### Fee Breakdown Example
+- **Unwrapping 2 wACG**: 
+  - Contract burns: 2 wACG (no fee)
+  - Bridge sends: 1 ACG (2 - 1 ACG service fee)
+  - Gas cost: 0.0014 BNB
+  - User receives: 1 ACG
+
 ## Contract Information
 
 - **Contract Name**: WrappedACG
@@ -24,10 +61,11 @@ Wrapped ACG (wACG) is an ERC-20 token that represents ACG tokens on the Binance 
 - **Version**: 1.2.0 (Secure)
 - **License**: MIT
 - **Network**: Binance Smart Chain (BSC)
-- **Proxy Address**: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` (Secure)
-- **Implementation**: `0x5FbDB2315678afecb367f032d93F642f64180aa3` (Secure)
-- **BSCscan**: [Verified Contract](https://bscscan.com/address/0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512)
+- **Proxy Address**: `0xFDd7F5098b0165B5857Ee137E182186700c843cf` (Secure v1.2.0)
+- **Implementation**: `0x5cCCd2E7e1F068129Af0932b2b56a2697f481917` (Secure v1.2.0)
+- **BSCscan**: [Verified Contract](https://bscscan.com/address/0xFDd7F5098b0165B5857Ee137E182186700c843cf)
 - **Legacy Contract**: `0xD774b89a621C2a6595b80CE260F7165a9A7A3846` (Deprecated)
+- **Previous Secure Contract**: `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` (Deprecated)
 
 ## Security Features
 
@@ -127,8 +165,9 @@ function setFeeCollector(address newCollector)
 function calculateFee(uint256 amount)
 ```
 - Owner-only functions to manage fee configuration
-- Fee calculation in basis points (0.25% = 25 bps)
-- Fee collection to designated address
+- Fee calculation in basis points (currently 0% = 0 bps)
+- Fee collection to designated address (currently disabled)
+- **Note**: Contract fees are disabled. Bridge service handles all fees (1 ACG per unwrap)
 
 #### Upgrade Control
 ```solidity
@@ -207,7 +246,9 @@ function initialize(
 - **Max Supply**: 51,940,422 ACG (total ACG supply)
 - **Daily Mint Limit**: 100,000 ACG per address
 - **Daily Burn Limit**: 100,000 ACG per address
-- **Unwrap Fee**: 25 basis points (0.25%)
+- **Unwrap Fee**: 0 basis points (0%) - No contract fees
+- **Bridge Service Fee**: 1 ACG per unwrap
+- **Gas Fee**: 0.0014 BNB per wrap/unwrap operation
 
 ## Integration Guide
 
@@ -227,13 +268,14 @@ const tx = await wacgContract.mint(
 #### Unwrapping wACG to ACG
 ```javascript
 // 1. User requests unwrap through bridge interface
-// 2. Bridge operator calls burnFrom function on BSC
+// 2. Bridge operator calls burnFrom function on BSC (no contract fees)
 const tx = await wacgContract.burnFrom(
     userAddress,           // User address to burn from
     amountInSmallestUnit,  // Amount in smallest unit (8 decimals)
     acgAddress            // ACG address to receive tokens
 );
 // 3. Backend detects UnwrapRequested event and sends ACG tokens
+// 4. Bridge service applies 1 ACG service fee per unwrap
 ```
 
 ### Backend Integration
@@ -279,6 +321,7 @@ wacgContract.on('UnwrapRequested', (from, amount, acgAddress) => {
 - Fee configuration is now flexible via basis points system ✅
 - Burn function is now protected by bridge operator role ✅
 - Upgrade function now requires multi-sig approval ✅
+- Contract fees are disabled (0 basis points) - Bridge service handles all fees ✅
 
 ### Risk Mitigation
 - Bridge operator uses deployer wallet for daily operations (automated)
@@ -385,6 +428,14 @@ FEE_COLLECTOR_ADDRESS=your_fee_collector_address
 2. Contact security team immediately
 3. Investigate and resolve issue
 4. Unpause contract when safe
+
+## Recent Updates
+
+### ✅ **Fee Structure Update (July 2025)**
+- **Contract Fee**: Set to 0 basis points (no contract fees)
+- **Bridge Service Fee**: 1 ACG per unwrap (handled by bridge service)
+- **Reason**: Eliminate double-charging and simplify fee structure
+- **Impact**: Users now pay only bridge service fee, no contract fees
 
 ## Security Status
 
