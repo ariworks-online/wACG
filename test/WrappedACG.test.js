@@ -3,578 +3,390 @@ const { ethers } = require("hardhat");
 
 describe("WrappedACG", function () {
   let WrappedACG;
-  let wacg;
+  let wrappedACG;
   let owner;
-  let custodian;
+  let bridgeOperator;
   let user1;
   let user2;
   let user3;
 
-  // Test configuration
-  const maxWrapAmount = ethers.parseUnits("1000000", 8); // 1,000,000 ACG
-  const maxUnwrapAmount = ethers.parseUnits("1000000", 8); // 1,000,000 ACG
-  const minAmount = ethers.parseUnits("0.00000001", 8); // 0.00000001 ACG
-  const dailyWrapLimit = ethers.parseUnits("10000000", 8); // 10,000,000 ACG
-  const dailyUnwrapLimit = ethers.parseUnits("10000000", 8); // 10,000,000 ACG
+  const testAmount = ethers.parseUnits("100", 8); // 100 ACG
+  const acgTxHash = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+  const acgAddress = "A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0U1V2W3X4Y5Z6";
+  const requestId = ethers.keccak256(ethers.toUtf8Bytes("test-request-1"));
 
   beforeEach(async function () {
-    [owner, custodian, user1, user2, user3] = await ethers.getSigners();
-
+    [owner, bridgeOperator, user1, user2, user3] = await ethers.getSigners();
+    
     WrappedACG = await ethers.getContractFactory("WrappedACG");
-    wacg = await WrappedACG.deploy(
-      custodian.address,
-      owner.address,
-      maxWrapAmount,
-      maxUnwrapAmount,
-      minAmount,
-      dailyWrapLimit,
-      dailyUnwrapLimit
-    );
+    wrappedACG = await WrappedACG.deploy(bridgeOperator.address, owner.address);
+    await wrappedACG.waitForDeployment();
   });
 
   describe("Deployment", function () {
-    it("Should deploy with correct initial values", async function () {
-      expect(await wacg.custodian()).to.equal(custodian.address);
-      expect(await wacg.owner()).to.equal(owner.address);
-      expect(await wacg.maxWrapAmount()).to.equal(maxWrapAmount);
-      expect(await wacg.maxUnwrapAmount()).to.equal(maxUnwrapAmount);
-      expect(await wacg.minAmount()).to.equal(minAmount);
-      expect(await wacg.dailyWrapLimit()).to.equal(dailyWrapLimit);
-      expect(await wacg.dailyUnwrapLimit()).to.equal(dailyUnwrapLimit);
-      expect(await wacg.decimals()).to.equal(8);
-      expect(await wacg.name()).to.equal("Wrapped ACG");
-      expect(await wacg.symbol()).to.equal("wACG");
-      expect(await wacg.VERSION()).to.equal("1.0.0");
+    it("Should set the correct bridge operator and owner", async function () {
+      expect(await wrappedACG.bridgeOperator()).to.equal(bridgeOperator.address);
+      expect(await wrappedACG.owner()).to.equal(owner.address);
     });
 
-    it("Should revert with invalid constructor parameters", async function () {
-      await expect(
-        WrappedACG.deploy(
-          ethers.ZeroAddress,
-          owner.address,
-          maxWrapAmount,
-          maxUnwrapAmount,
-          minAmount,
-          dailyWrapLimit,
-          dailyUnwrapLimit
-        )
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
+    it("Should have correct token details", async function () {
+      expect(await wrappedACG.name()).to.equal("Wrapped ACG");
+      expect(await wrappedACG.symbol()).to.equal("wACG");
+      expect(await wrappedACG.decimals()).to.equal(8);
+    });
 
-      await expect(
-        WrappedACG.deploy(
-          custodian.address,
-          ethers.ZeroAddress,
-          maxWrapAmount,
-          maxUnwrapAmount,
-          minAmount,
-          dailyWrapLimit,
-          dailyUnwrapLimit
-        )
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
+    it("Should start with zero total supply", async function () {
+      expect(await wrappedACG.totalSupply()).to.equal(0);
+    });
 
+    it("Should not be paused initially", async function () {
+      expect(await wrappedACG.paused()).to.be.false;
+    });
+  });
+
+  describe("Bridge Mint", function () {
+    it("Should allow bridge operator to mint tokens", async function () {
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
+
+      expect(await wrappedACG.balanceOf(user1.address)).to.equal(testAmount);
+      expect(await wrappedACG.totalSupply()).to.equal(testAmount);
+      expect(await wrappedACG.isRequestProcessed(requestId)).to.be.true;
+    });
+
+    it("Should emit BridgeMint event", async function () {
+      const tx = await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
+      
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(log => {
+        try {
+          const parsed = wrappedACG.interface.parseLog(log);
+          return parsed.name === "BridgeMint";
+        } catch {
+          return false;
+        }
+      });
+      
+      expect(event).to.not.be.undefined;
+    });
+
+    it("Should revert if called by non-bridge operator", async function () {
       await expect(
-        WrappedACG.deploy(
-          custodian.address,
-          owner.address,
+        wrappedACG.connect(user1).bridgeMint(
+          user2.address,
+          testAmount,
+          acgTxHash,
+          requestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "OnlyBridgeOperator");
+    });
+
+    it("Should revert if recipient is zero address", async function () {
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeMint(
+          ethers.ZeroAddress,
+          testAmount,
+          acgTxHash,
+          requestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "InvalidAddress");
+    });
+
+    it("Should revert if amount is zero", async function () {
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeMint(
+          user1.address,
           0,
-          maxUnwrapAmount,
-          minAmount,
-          dailyWrapLimit,
-          dailyUnwrapLimit
+          acgTxHash,
+          requestId
         )
-      ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
+      ).to.be.revertedWithCustomError(wrappedACG, "InvalidAmount");
+    });
+
+    it("Should revert if request already processed", async function () {
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
+
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeMint(
+          user2.address,
+          testAmount,
+          acgTxHash,
+          requestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "RequestAlreadyProcessed");
+    });
+
+    it("Should revert when contract is paused", async function () {
+      await wrappedACG.connect(owner).pause();
+
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeMint(
+          user1.address,
+          testAmount,
+          acgTxHash,
+          requestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "EnforcedPause");
     });
   });
 
-  describe("Wrap Function", function () {
-    const wrapAmount = ethers.parseUnits("100", 8); // 100 ACG
-    const acgTxHash = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-
-    it("Should wrap ACG tokens successfully", async function () {
-      const initialBalance = await wacg.balanceOf(user1.address);
-      const initialTotalWrapped = await wacg.totalACGWrapped();
-
-      await wacg.connect(user1).wrap(user1.address, wrapAmount, acgTxHash);
-
-      expect(await wacg.balanceOf(user1.address)).to.equal(initialBalance + wrapAmount);
-      expect(await wacg.totalACGWrapped()).to.equal(initialTotalWrapped + wrapAmount);
-    });
-
-    it("Should emit ACGWrapped event", async function () {
-      await expect(wacg.connect(user1).wrap(user1.address, wrapAmount, acgTxHash))
-        .to.emit(wacg, "ACGWrapped")
-        .withArgs(user1.address, wrapAmount, acgTxHash, await wacg.isRequestProcessed(ethers.keccak256(ethers.toUtf8Bytes(user1.address + wrapAmount.toString() + acgTxHash + (await ethers.provider.getNetwork()).chainId))));
-    });
-
-    it("Should prevent duplicate wrap requests", async function () {
-      await wacg.connect(user1).wrap(user1.address, wrapAmount, acgTxHash);
-
-      await expect(
-        wacg.connect(user1).wrap(user1.address, wrapAmount, acgTxHash)
-      ).to.be.revertedWithCustomError(wacg, "RequestAlreadyProcessed");
-    });
-
-    it("Should revert with invalid parameters", async function () {
-      // Zero address
-      await expect(
-        wacg.connect(user1).wrap(ethers.ZeroAddress, wrapAmount, acgTxHash)
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-      // Zero amount
-      await expect(
-        wacg.connect(user1).wrap(user1.address, 0, acgTxHash)
-      ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
-
-      // Empty ACG transaction hash
-      await expect(
-        wacg.connect(user1).wrap(user1.address, wrapAmount, "")
-      ).to.be.revertedWithCustomError(wacg, "InvalidACGTxHash");
-
-      // Amount exceeds max limit
-      await expect(
-        wacg.connect(user1).wrap(user1.address, maxWrapAmount + 1n, acgTxHash)
-      ).to.be.revertedWithCustomError(wacg, "AmountExceedsMaxLimit");
-
-      // Amount below min limit
-      await expect(
-        wacg.connect(user1).wrap(user1.address, minAmount - 1n, acgTxHash)
-      ).to.be.revertedWithCustomError(wacg, "AmountBelowMinLimit");
-    });
-
-    it("Should enforce daily wrap limits", async function () {
-      const dailyLimit = await wacg.dailyWrapLimit();
-      const halfLimit = dailyLimit / 2n;
-
-      // First wrap - should succeed
-      await wacg.connect(user1).wrap(user1.address, halfLimit, acgTxHash + "1");
-
-      // Second wrap within limit - should succeed
-      await wacg.connect(user1).wrap(user1.address, halfLimit, acgTxHash + "2");
-
-      // Third wrap exceeding limit - should fail
-      await expect(
-        wacg.connect(user1).wrap(user1.address, 1n, acgTxHash + "3")
-      ).to.be.revertedWithCustomError(wacg, "DailyLimitExceeded");
-    });
-  });
-
-  describe("Unwrap Function", function () {
-    const unwrapAmount = ethers.parseUnits("100", 8); // 100 ACG
-    const acgAddress = "AWEwieKZdYWDuBBDYwjN5qNnbjJH95rbw7";
-
+  describe("Bridge Burn", function () {
     beforeEach(async function () {
-      // Give user1 some wACG tokens first
-      await wacg.connect(custodian).emergencyMint(user1.address, unwrapAmount * 2n);
+      // Mint tokens first
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
     });
 
-    it("Should unwrap wACG tokens successfully", async function () {
-      const initialBalance = await wacg.balanceOf(user1.address);
-      const initialTotalUnwrapped = await wacg.totalACGUnwrapped();
+    it("Should allow bridge operator to burn tokens", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-1"));
+      
+      await wrappedACG.connect(bridgeOperator).bridgeBurn(
+        user1.address,
+        testAmount,
+        acgAddress,
+        burnRequestId
+      );
 
-      await wacg.connect(user1).unwrap(user1.address, unwrapAmount, acgAddress);
-
-      expect(await wacg.balanceOf(user1.address)).to.equal(initialBalance - unwrapAmount);
-      expect(await wacg.totalACGUnwrapped()).to.equal(initialTotalUnwrapped + unwrapAmount);
+      expect(await wrappedACG.balanceOf(user1.address)).to.equal(0);
+      expect(await wrappedACG.totalSupply()).to.equal(0);
+      expect(await wrappedACG.isRequestProcessed(burnRequestId)).to.be.true;
     });
 
-    it("Should emit ACGUnwrapped event", async function () {
-      await expect(wacg.connect(user1).unwrap(user1.address, unwrapAmount, acgAddress))
-        .to.emit(wacg, "ACGUnwrapped")
-        .withArgs(user1.address, unwrapAmount, acgAddress, await wacg.isRequestProcessed(ethers.keccak256(ethers.toUtf8Bytes(user1.address + unwrapAmount.toString() + acgAddress + (await ethers.provider.getNetwork()).chainId))));
+    it("Should emit BridgeBurn event", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-2"));
+      
+      const tx = await wrappedACG.connect(bridgeOperator).bridgeBurn(
+        user1.address,
+        testAmount,
+        acgAddress,
+        burnRequestId
+      );
+      
+      const receipt = await tx.wait();
+      const event = receipt.logs.find(log => {
+        try {
+          const parsed = wrappedACG.interface.parseLog(log);
+          return parsed.name === "BridgeBurn";
+        } catch {
+          return false;
+        }
+      });
+      
+      expect(event).to.not.be.undefined;
     });
 
-    it("Should prevent duplicate unwrap requests", async function () {
-      await wacg.connect(user1).unwrap(user1.address, unwrapAmount, acgAddress);
-
+    it("Should revert if called by non-bridge operator", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-3"));
+      
       await expect(
-        wacg.connect(user1).unwrap(user1.address, unwrapAmount, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "RequestAlreadyProcessed");
+        wrappedACG.connect(user1).bridgeBurn(
+          user1.address,
+          testAmount,
+          acgAddress,
+          burnRequestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "OnlyBridgeOperator");
     });
 
-    it("Should revert with invalid parameters", async function () {
-      // Zero address
+    it("Should revert if from address is zero", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-4"));
+      
       await expect(
-        wacg.connect(user1).unwrap(ethers.ZeroAddress, unwrapAmount, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-      // Zero amount
-      await expect(
-        wacg.connect(user1).unwrap(user1.address, 0, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
-
-      // Empty ACG address
-      await expect(
-        wacg.connect(user1).unwrap(user1.address, unwrapAmount, "")
-      ).to.be.revertedWithCustomError(wacg, "InvalidACGAddress");
-
-      // Wrong sender
-      await expect(
-        wacg.connect(user2).unwrap(user1.address, unwrapAmount, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-      // Insufficient balance
-      await expect(
-        wacg.connect(user1).unwrap(user1.address, unwrapAmount * 10n, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "InsufficientBalance");
-
-      // Amount exceeds max limit
-      await expect(
-        wacg.connect(user1).unwrap(user1.address, maxUnwrapAmount + 1n, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "AmountExceedsMaxLimit");
-
-      // Amount below min limit
-      await expect(
-        wacg.connect(user1).unwrap(user1.address, minAmount - 1n, acgAddress)
-      ).to.be.revertedWithCustomError(wacg, "AmountBelowMinLimit");
+        wrappedACG.connect(bridgeOperator).bridgeBurn(
+          ethers.ZeroAddress,
+          testAmount,
+          acgAddress,
+          burnRequestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "InvalidAddress");
     });
 
-    it("Should enforce daily unwrap limits", async function () {
-      const dailyLimit = await wacg.dailyUnwrapLimit();
-      const halfLimit = dailyLimit / 2n;
-
-      // Give user1 enough tokens
-      await wacg.connect(custodian).emergencyMint(user1.address, dailyLimit);
-
-      // First unwrap - should succeed
-      await wacg.connect(user1).unwrap(user1.address, halfLimit, acgAddress + "1");
-
-      // Second unwrap within limit - should succeed
-      await wacg.connect(user1).unwrap(user1.address, halfLimit, acgAddress + "2");
-
-      // Third unwrap exceeding limit - should fail
+    it("Should revert if amount is zero", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-5"));
+      
       await expect(
-        wacg.connect(user1).unwrap(user1.address, 1n, acgAddress + "3")
-      ).to.be.revertedWithCustomError(wacg, "DailyLimitExceeded");
+        wrappedACG.connect(bridgeOperator).bridgeBurn(
+          user1.address,
+          0,
+          acgAddress,
+          burnRequestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "InvalidAmount");
+    });
+
+    it("Should revert if request already processed", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-6"));
+      
+      await wrappedACG.connect(bridgeOperator).bridgeBurn(
+        user1.address,
+        testAmount,
+        acgAddress,
+        burnRequestId
+      );
+
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeBurn(
+          user1.address,
+          testAmount,
+          acgAddress,
+          burnRequestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "RequestAlreadyProcessed");
+    });
+
+    it("Should revert when contract is paused", async function () {
+      const burnRequestId = ethers.keccak256(ethers.toUtf8Bytes("burn-request-7"));
+      
+      await wrappedACG.connect(owner).pause();
+
+      await expect(
+        wrappedACG.connect(bridgeOperator).bridgeBurn(
+          user1.address,
+          testAmount,
+          acgAddress,
+          burnRequestId
+        )
+      ).to.be.revertedWithCustomError(wrappedACG, "EnforcedPause");
     });
   });
 
   describe("Admin Functions", function () {
-    describe("Emergency Mint", function () {
-      it("Should allow custodian to emergency mint", async function () {
-        const mintAmount = ethers.parseUnits("1000", 8);
-        const initialBalance = await wacg.balanceOf(user1.address);
+    it("Should allow owner to update bridge operator", async function () {
+      await expect(
+        wrappedACG.connect(owner).updateBridgeOperator(user1.address)
+      )
+        .to.emit(wrappedACG, "BridgeOperatorUpdated")
+        .withArgs(bridgeOperator.address, user1.address);
 
-        await wacg.connect(custodian).emergencyMint(user1.address, mintAmount);
-
-        expect(await wacg.balanceOf(user1.address)).to.equal(initialBalance + mintAmount);
-      });
-
-      it("Should prevent non-custodian from emergency minting", async function () {
-        const mintAmount = ethers.parseUnits("1000", 8);
-
-        await expect(
-          wacg.connect(user1).emergencyMint(user1.address, mintAmount)
-        ).to.be.revertedWithCustomError(wacg, "OnlyCustodian");
-      });
-
-      it("Should revert with invalid parameters", async function () {
-        await expect(
-          wacg.connect(custodian).emergencyMint(ethers.ZeroAddress, 1000n)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-        await expect(
-          wacg.connect(custodian).emergencyMint(user1.address, 0)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
-      });
+      expect(await wrappedACG.bridgeOperator()).to.equal(user1.address);
     });
 
-    describe("Change Custodian", function () {
-      it("Should allow owner to change custodian", async function () {
-        const newCustodian = user2.address;
-        const oldCustodian = await wacg.custodian();
-
-        await expect(wacg.connect(owner).changeCustodian(newCustodian))
-          .to.emit(wacg, "CustodianChanged")
-          .withArgs(oldCustodian, newCustodian);
-
-        expect(await wacg.custodian()).to.equal(newCustodian);
-      });
-
-      it("Should prevent non-owner from changing custodian", async function () {
-        await expect(
-          wacg.connect(user1).changeCustodian(user2.address)
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("Should revert with invalid parameters", async function () {
-        await expect(
-          wacg.connect(owner).changeCustodian(ethers.ZeroAddress)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-        await expect(
-          wacg.connect(owner).changeCustodian(custodian.address)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-      });
+    it("Should revert if non-owner tries to update bridge operator", async function () {
+      await expect(
+        wrappedACG.connect(user1).updateBridgeOperator(user2.address)
+      ).to.be.revertedWithCustomError(wrappedACG, "OwnableUnauthorizedAccount");
     });
 
-    describe("Update Limits", function () {
-      it("Should allow owner to update limits", async function () {
-        const newMaxWrap = ethers.parseUnits("2000000", 8);
-        const newMaxUnwrap = ethers.parseUnits("2000000", 8);
-        const newMinAmount = ethers.parseUnits("0.00000002", 8);
-
-        await expect(wacg.connect(owner).updateLimits(newMaxWrap, newMaxUnwrap, newMinAmount))
-          .to.emit(wacg, "LimitsUpdated")
-          .withArgs(newMaxWrap, newMaxUnwrap, newMinAmount);
-
-        expect(await wacg.maxWrapAmount()).to.equal(newMaxWrap);
-        expect(await wacg.maxUnwrapAmount()).to.equal(newMaxUnwrap);
-        expect(await wacg.minAmount()).to.equal(newMinAmount);
-      });
-
-      it("Should prevent non-owner from updating limits", async function () {
-        await expect(
-          wacg.connect(user1).updateLimits(1000n, 1000n, 1n)
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("Should revert with invalid parameters", async function () {
-        await expect(
-          wacg.connect(owner).updateLimits(0, 1000n, 1n)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
-      });
+    it("Should revert if trying to set bridge operator to zero address", async function () {
+      await expect(
+        wrappedACG.connect(owner).updateBridgeOperator(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(wrappedACG, "InvalidAddress");
     });
 
-    describe("Update Daily Limits", function () {
-      it("Should allow owner to update daily limits", async function () {
-        const newDailyWrap = ethers.parseUnits("20000000", 8);
-        const newDailyUnwrap = ethers.parseUnits("20000000", 8);
+    it("Should allow owner to pause and unpause", async function () {
+      await wrappedACG.connect(owner).pause();
+      expect(await wrappedACG.paused()).to.be.true;
 
-        await expect(wacg.connect(owner).updateDailyLimits(newDailyWrap, newDailyUnwrap))
-          .to.emit(wacg, "DailyLimitsUpdated")
-          .withArgs(newDailyWrap, newDailyUnwrap);
-
-        expect(await wacg.dailyWrapLimit()).to.equal(newDailyWrap);
-        expect(await wacg.dailyUnwrapLimit()).to.equal(newDailyUnwrap);
-      });
-
-      it("Should prevent non-owner from updating daily limits", async function () {
-        await expect(
-          wacg.connect(user1).updateDailyLimits(1000n, 1000n)
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
+      await wrappedACG.connect(owner).unpause();
+      expect(await wrappedACG.paused()).to.be.false;
     });
 
-    describe("Pause/Unpause", function () {
-      it("Should allow owner to pause and unpause", async function () {
-        await wacg.connect(owner).pause();
-        expect(await wacg.paused()).to.be.true;
-
-        await wacg.connect(owner).unpause();
-        expect(await wacg.paused()).to.be.false;
-      });
-
-      it("Should prevent non-owner from pausing", async function () {
-        await expect(
-          wacg.connect(user1).pause()
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("Should prevent operations when paused", async function () {
-        await wacg.connect(owner).pause();
-
-        await expect(
-          wacg.connect(user1).wrap(user1.address, 1000n, "txhash")
-        ).to.be.revertedWith("Pausable: paused");
-
-        await expect(
-          wacg.connect(user1).unwrap(user1.address, 1000n, "acgaddress")
-        ).to.be.revertedWith("Pausable: paused");
-      });
+    it("Should revert if non-owner tries to pause", async function () {
+      await expect(
+        wrappedACG.connect(user1).pause()
+      ).to.be.revertedWithCustomError(wrappedACG, "OwnableUnauthorizedAccount");
     });
 
-    describe("Emergency Recovery", function () {
-      it("Should allow owner to recover stuck ERC20 tokens", async function () {
-        // Deploy a mock ERC20 token
-        const MockERC20 = await ethers.getContractFactory("MockERC20");
-        const mockToken = await MockERC20.deploy("Mock Token", "MOCK");
-
-        // Transfer some tokens to the contract
-        await mockToken.transfer(wacg.getAddress(), 1000n);
-
-        const initialBalance = await mockToken.balanceOf(owner.address);
-
-        await expect(wacg.connect(owner).emergencyRecoverERC20(mockToken.getAddress(), owner.address, 1000n))
-          .to.emit(wacg, "EmergencyRecovery")
-          .withArgs(mockToken.getAddress(), owner.address, 1000n);
-
-        expect(await mockToken.balanceOf(owner.address)).to.equal(initialBalance + 1000n);
-      });
-
-      it("Should prevent non-owner from emergency recovery", async function () {
-        await expect(
-          wacg.connect(user1).emergencyRecoverERC20(user2.address, user1.address, 1000n)
-        ).to.be.revertedWith("Ownable: caller is not the owner");
-      });
-
-      it("Should prevent recovery of wACG tokens", async function () {
-        await expect(
-          wacg.connect(owner).emergencyRecoverERC20(wacg.getAddress(), owner.address, 1000n)
-        ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-      });
-    });
-  });
-
-  describe("View Functions", function () {
-    it("Should return correct stats", async function () {
-      const stats = await wacg.getStats();
-
-      expect(stats[0]).to.equal(await wacg.totalSupply());
-      expect(stats[1]).to.equal(await wacg.totalACGWrapped());
-      expect(stats[2]).to.equal(await wacg.totalACGUnwrapped());
-      expect(stats[3]).to.equal(await wacg.custodian());
-      expect(stats[4]).to.equal(await wacg.paused());
-      expect(stats[5]).to.equal(await wacg.maxWrapAmount());
-      expect(stats[6]).to.equal(await wacg.maxUnwrapAmount());
-      expect(stats[7]).to.equal(await wacg.minAmount());
-      expect(stats[8]).to.equal(await wacg.dailyWrapLimit());
-      expect(stats[9]).to.equal(await wacg.dailyUnwrapLimit());
-    });
-
-    it("Should return correct daily amounts", async function () {
-      const today = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-      const wrapAmount = ethers.parseUnits("100", 8);
-
-      await wacg.connect(user1).wrap(user1.address, wrapAmount, "txhash1");
-
-      expect(await wacg.getDailyWrapAmount(user1.address, today)).to.equal(wrapAmount);
-      expect(await wacg.getDailyUnwrapAmount(user1.address, today)).to.equal(0n);
-    });
-
-    it("Should return correct request processed status", async function () {
-      const requestId = ethers.keccak256(ethers.toUtf8Bytes("test"));
+    it("Should revert if non-owner tries to unpause", async function () {
+      await wrappedACG.connect(owner).pause();
       
-      expect(await wacg.isRequestProcessed(requestId)).to.be.false;
+      await expect(
+        wrappedACG.connect(user1).unpause()
+      ).to.be.revertedWithCustomError(wrappedACG, "OwnableUnauthorizedAccount");
     });
   });
 
-  describe("Token Functions", function () {
+  describe("Token Transfers", function () {
     beforeEach(async function () {
-      // Give user1 some tokens
-      await wacg.connect(custodian).emergencyMint(user1.address, ethers.parseUnits("1000", 8));
+      // Mint tokens to user1
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
     });
 
-    it("Should allow transfers when not paused", async function () {
-      const transferAmount = ethers.parseUnits("100", 8);
-      const initialBalance = await wacg.balanceOf(user2.address);
-
-      await wacg.connect(user1).transfer(user2.address, transferAmount);
-
-      expect(await wacg.balanceOf(user2.address)).to.equal(initialBalance + transferAmount);
-    });
-
-    it("Should prevent transfers when paused", async function () {
-      await wacg.connect(owner).pause();
-
-      await expect(
-        wacg.connect(user1).transfer(user2.address, 100n)
-      ).to.be.revertedWith("Pausable: paused");
-    });
-
-    it("Should allow approvals when not paused", async function () {
-      const approveAmount = ethers.parseUnits("100", 8);
-
-      await wacg.connect(user1).approve(user2.address, approveAmount);
-
-      expect(await wacg.allowance(user1.address, user2.address)).to.equal(approveAmount);
-    });
-
-    it("Should prevent approvals when paused", async function () {
-      await wacg.connect(owner).pause();
-
-      await expect(
-        wacg.connect(user1).approve(user2.address, 100n)
-      ).to.be.revertedWith("Pausable: paused");
-    });
-
-    it("Should allow transferFrom when not paused", async function () {
-      const transferAmount = ethers.parseUnits("100", 8);
+    it("Should allow normal ERC20 transfers", async function () {
+      const transferAmount = ethers.parseUnits("50", 8);
       
-      await wacg.connect(user1).approve(user2.address, transferAmount);
-      await wacg.connect(user2).transferFrom(user1.address, user3.address, transferAmount);
-
-      expect(await wacg.balanceOf(user3.address)).to.equal(transferAmount);
+      await wrappedACG.connect(user1).transfer(user2.address, transferAmount);
+      
+      expect(await wrappedACG.balanceOf(user1.address)).to.equal(ethers.parseUnits("50", 8));
+      expect(await wrappedACG.balanceOf(user2.address)).to.equal(transferAmount);
     });
 
-    it("Should prevent transferFrom when paused", async function () {
-      const transferAmount = ethers.parseUnits("100", 8);
+    it("Should revert transfers when paused", async function () {
+      await wrappedACG.connect(owner).pause();
       
-      await wacg.connect(user1).approve(user2.address, transferAmount);
-      await wacg.connect(owner).pause();
-
       await expect(
-        wacg.connect(user2).transferFrom(user1.address, user3.address, transferAmount)
-      ).to.be.revertedWith("Pausable: paused");
+        wrappedACG.connect(user1).transfer(user2.address, ethers.parseUnits("10", 8))
+      ).to.be.revertedWithCustomError(wrappedACG, "EnforcedPause");
+    });
+
+    it("Should allow approve and transferFrom", async function () {
+      const approveAmount = ethers.parseUnits("30", 8);
+      
+      await wrappedACG.connect(user1).approve(user2.address, approveAmount);
+      expect(await wrappedACG.allowance(user1.address, user2.address)).to.equal(approveAmount);
+      
+      await wrappedACG.connect(user2).transferFrom(user1.address, user3.address, approveAmount);
+      expect(await wrappedACG.balanceOf(user3.address)).to.equal(approveAmount);
     });
   });
 
-  describe("Edge Cases", function () {
-    it("Should handle maximum values correctly", async function () {
-      const maxAmount = ethers.parseUnits("1000000", 8);
+  describe("Request Tracking", function () {
+    it("Should track processed requests correctly", async function () {
+      expect(await wrappedACG.isRequestProcessed(requestId)).to.be.false;
       
-      await wacg.connect(user1).wrap(user1.address, maxAmount, "maxTxHash");
-      expect(await wacg.balanceOf(user1.address)).to.equal(maxAmount);
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId
+      );
+      
+      expect(await wrappedACG.isRequestProcessed(requestId)).to.be.true;
     });
 
-    it("Should handle minimum values correctly", async function () {
-      const minAmount = ethers.parseUnits("0.00000001", 8);
+    it("Should handle multiple unique requests", async function () {
+      const requestId1 = ethers.keccak256(ethers.toUtf8Bytes("request-1"));
+      const requestId2 = ethers.keccak256(ethers.toUtf8Bytes("request-2"));
       
-      await wacg.connect(user1).wrap(user1.address, minAmount, "minTxHash");
-      expect(await wacg.balanceOf(user1.address)).to.equal(minAmount);
-    });
-
-    it("Should handle daily limit resets", async function () {
-      const dailyLimit = await wacg.dailyWrapLimit();
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user1.address,
+        testAmount,
+        acgTxHash,
+        requestId1
+      );
       
-      // Use up daily limit
-      await wacg.connect(user1).wrap(user1.address, dailyLimit, "txhash1");
+      await wrappedACG.connect(bridgeOperator).bridgeMint(
+        user2.address,
+        testAmount,
+        acgTxHash,
+        requestId2
+      );
       
-      // Try to wrap more - should fail
-      await expect(
-        wacg.connect(user1).wrap(user1.address, 1n, "txhash2")
-      ).to.be.revertedWithCustomError(wacg, "DailyLimitExceeded");
-    });
-
-    it("Should handle multiple users correctly", async function () {
-      const amount = ethers.parseUnits("100", 8);
-      
-      await wacg.connect(user1).wrap(user1.address, amount, "txhash1");
-      await wacg.connect(user2).wrap(user2.address, amount, "txhash2");
-      
-      expect(await wacg.balanceOf(user1.address)).to.equal(amount);
-      expect(await wacg.balanceOf(user2.address)).to.equal(amount);
-    });
-  });
-
-  describe("Security", function () {
-    it("Should prevent reentrancy attacks", async function () {
-      // This test would require a malicious contract that tries to reenter
-      // For now, we test that the nonReentrant modifier is present
-      const contractCode = await ethers.provider.getCode(wacg.getAddress());
-      expect(contractCode).to.not.equal("0x");
-    });
-
-    it("Should validate all inputs", async function () {
-      // Test various invalid inputs
-      await expect(
-        wacg.connect(user1).wrap(ethers.ZeroAddress, 1000n, "txhash")
-      ).to.be.revertedWithCustomError(wacg, "InvalidAddress");
-
-      await expect(
-        wacg.connect(user1).wrap(user1.address, 0, "txhash")
-      ).to.be.revertedWithCustomError(wacg, "InvalidAmount");
-    });
-
-    it("Should maintain proper access control", async function () {
-      // Only custodian can emergency mint
-      await expect(
-        wacg.connect(user1).emergencyMint(user1.address, 1000n)
-      ).to.be.revertedWithCustomError(wacg, "OnlyCustodian");
-
-      // Only owner can change custodian
-      await expect(
-        wacg.connect(user1).changeCustodian(user2.address)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      expect(await wrappedACG.isRequestProcessed(requestId1)).to.be.true;
+      expect(await wrappedACG.isRequestProcessed(requestId2)).to.be.true;
     });
   });
 }); 
