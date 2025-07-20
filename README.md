@@ -5,12 +5,13 @@
 Wrapped ACG (wACG) is an ERC-20 token that represents ACG tokens on the Binance Smart Chain (BSC). It enables cross-chain functionality between the ACG blockchain and BSC, allowing users to bridge their ACG tokens between networks.
 
 ## AUDIT REPORT
-**Latest Audit Report**: [AUDIT-REPORT-V2.md](AUDIT-REPORT-V2.md)  
-**Previous Audit**: [AUDIT-REPORT.md](AUDIT-REPORT.md)
+**Latest Audit Report**: [AUDIT-REPORT-V3.md](AUDIT-REPORT-V3.md)  
+**Previous Audits**: [AUDIT-REPORT-V2.md](AUDIT-REPORT-V2.md)
 
-**Security Rating**: 🟡 **MEDIUM-HIGH**  
+**Security Rating**: 🟡 **7.8/10 - GOOD**  
 **Audit Date**: July 20, 2025  
-**Auditor**: YesChat AI Security Analysis
+**Auditor**: YesChat AI Security Analysis  
+**Key Findings**: Replay protection excellent, burn function needs access control
 
 ## Contract Information
 
@@ -229,6 +230,8 @@ wacgContract.on('UnwrapRequested', (from, amount, acgAddress) => {
 - Daily limits reset at midnight UTC
 - Wrap IDs include chain ID for cross-chain safety
 - Fee configuration requires contract upgrade (addressed in audit recommendations)
+- Burn function is publicly accessible (critical issue identified in latest audit)
+- Upgrade function lacks timelock mechanism (high priority improvement needed)
 
 ### Risk Mitigation
 - Bridge operator should be upgraded to multi-sig wallet (recommended in audit)
@@ -238,6 +241,8 @@ wacgContract.on('UnwrapRequested', (from, amount, acgAddress) => {
 - Emergency procedures documented
 - Regular security audits recommended
 - Real-time alerting for suspicious activities
+- **Critical**: Burn function access control needs immediate implementation
+- **High Priority**: Upgrade timelock mechanism required
 
 ## Testing
 
